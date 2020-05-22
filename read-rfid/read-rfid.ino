@@ -1,6 +1,9 @@
 #include <SPI.h>
+#include <ESP8266WiFi.h>
 #include <MFRC522.h>
 #include "wifi.h"
+
+const char* host = "services.finalsa.com";
 
 #define RST_PIN 0
 #define SS_PIN 2
@@ -10,14 +13,27 @@ MFRC522::MIFARE_Key key;
 
 void setup()
 {
-  Serial.begin(9600); // Initialize serial communications with the PC
-  while (!Serial)
-    ;                 // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
   SPI.begin();        // Init SPI bus
   mfrc522.PCD_Init(); // Init MFRC522 card
 
   // Prepare the key (used both as key A and as key B)
   // using FFFFFFFFFFFFh which is the default at chip delivery from the factory
+
+  for (uint8_t t = 4; t > 0; t--) {
+    Serial.printf("[SETUP] WAIT %d...\n", t);
+    Serial.flush();
+    delay(1000);
+  }
+
+ 
+  Serial.println(" connected");
   for (byte i = 0; i < 6; i++)
   {
     key.keyByte[i] = 0xFF;
@@ -42,6 +58,7 @@ void loop()
   {
     return;
   }
+  WiFiClient client;
   // Show some details of the PICC (that is: the tag/card)
   Serial.print(F("Card UID:"));
   dump_byte_array(mfrc522.uid.uidByte, mfrc522.uid.size);
@@ -50,56 +67,26 @@ void loop()
   Serial.print(F("PICC type: "));
   MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
   Serial.println(mfrc522.PICC_GetTypeName(piccType));
-
-  if (piccType != MFRC522::PICC_TYPE_MIFARE_MINI && piccType != MFRC522::PICC_TYPE_MIFARE_1K && piccType != MFRC522::PICC_TYPE_MIFARE_4K)
+  if (client.connect(host, 80))
   {
-    Serial.println(F("This sample only works with MIFARE Classic cards."));
-    return;
+      client.print(String("GET /") + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "Connection: close\r\n" +
+                 "\r\n"
+                );
+
+     Serial.println("[Response:]");
+    while (client.connected() || client.available())
+    {
+      if (client.available())
+      {
+        String line = client.readStringUntil('\n');
+        Serial.println(line);
+      }
+    }
+    client.stop();
+    Serial.println("\n[Disconnected]");
   }
-
-  byte sector = 1;
-  byte blockAddr = 4;
-  byte dataBlock[] = {
-      0x01, 0x02, 0x03, 0x04, //  1,  2,   3,  4,
-      0x05, 0x06, 0x07, 0x08, //  5,  6,   7,  8,
-      0x09, 0x0a, 0xff, 0x0b, //  9, 10, 255, 11,
-      0x0c, 0x0d, 0x0e, 0x0f  // 12, 13, 14, 15
-  };
-  byte trailerBlock = 7;
-  MFRC522::StatusCode status;
-  byte buffer[18];
-  byte size = sizeof(buffer);
-
-  Serial.println(F("Authenticating using key A..."));
-  status = (MFRC522::StatusCode)mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(mfrc522.uid));
-  if (status != MFRC522::STATUS_OK)
-  {
-    Serial.print(F("PCD_Authenticate() failed: "));
-    Serial.println(mfrc522.GetStatusCodeName(status));
-    return;
-  }
-
-  // Show the whole sector as it currently is
-  Serial.println(F("Current data in sector:"));
-  mfrc522.PICC_DumpMifareClassicSectorToSerial(&(mfrc522.uid), &key, sector);
-  Serial.println();
-
-  // Read data from the block
-  Serial.print(F("Reading data from block "));
-  Serial.print(blockAddr);
-  Serial.println(F(" ..."));
-  status = (MFRC522::StatusCode)mfrc522.MIFARE_Read(blockAddr, buffer, &size);
-  if (status != MFRC522::STATUS_OK)
-  {
-    Serial.print(F("MIFARE_Read() failed: "));
-    Serial.println(mfrc522.GetStatusCodeName(status));
-  }
-  Serial.print(F("Data in block "));
-  Serial.print(blockAddr);
-  Serial.println(F(":"));
-  dump_byte_array(buffer, 16);
-  Serial.println();
-  Serial.println();
 }
 
 void dump_byte_array(byte *buffer, byte bufferSize)

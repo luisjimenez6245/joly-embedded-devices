@@ -1,2 +1,2 @@
-#define WIFI_SSID "Mujica"
-#define WIFI_PASSWORD "Mug2215562."
+const char *ssid = "Mujica";
+const char *password = "Mug2215562.";
