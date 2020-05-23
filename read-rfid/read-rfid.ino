@@ -1,39 +1,40 @@
-#include <SPI.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 #include <MFRC522.h>
-#include "wifi.h"
+#include <SPI.h>
 
-const char* host = "services.finalsa.com";
+const char* host = "http://192.168.1.100:5000";
+const char *ssid = "Mujica";
+const char *password = "Mug2215562.";
 
 #define RST_PIN 0
 #define SS_PIN 2
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MFRC522::MIFARE_Key key;
+WiFiClient client;
 
 void setup()
 {
   Serial.begin(115200);
   WiFi.begin(ssid, password);
+ 
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
   }
-  SPI.begin();        // Init SPI bus
-  mfrc522.PCD_Init(); // Init MFRC522 card
+  Serial.println(" connected");
+  Serial.println(WiFi.localIP()); 
 
-  // Prepare the key (used both as key A and as key B)
-  // using FFFFFFFFFFFFh which is the default at chip delivery from the factory
-
+  SPI.begin();
+  mfrc522.PCD_Init(); 
   for (uint8_t t = 4; t > 0; t--) {
     Serial.printf("[SETUP] WAIT %d...\n", t);
     Serial.flush();
     delay(1000);
   }
-
- 
-  Serial.println(" connected");
   for (byte i = 0; i < 6; i++)
   {
     key.keyByte[i] = 0xFF;
@@ -43,8 +44,6 @@ void setup()
   Serial.print(F("Using key (for A and B):"));
   dump_byte_array(key.keyByte, MFRC522::MF_KEY_SIZE);
   Serial.println();
-
-  Serial.println(F("BEWARE: Data will be written to the PICC, in sector #1"));
 }
 
 void loop()
@@ -58,7 +57,6 @@ void loop()
   {
     return;
   }
-  WiFiClient client;
   // Show some details of the PICC (that is: the tag/card)
   Serial.print(F("Card UID:"));
   dump_byte_array(mfrc522.uid.uidByte, mfrc522.uid.size);
@@ -67,26 +65,33 @@ void loop()
   Serial.print(F("PICC type: "));
   MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
   Serial.println(mfrc522.PICC_GetTypeName(piccType));
-  if (client.connect(host, 80))
-  {
-      client.print(String("GET /") + " HTTP/1.1\r\n" +
-                 "Host: " + host + "\r\n" +
-                 "Connection: close\r\n" +
-                 "\r\n"
-                );
 
-     Serial.println("[Response:]");
-    while (client.connected() || client.available())
-    {
-      if (client.available())
-      {
-        String line = client.readStringUntil('\n');
-        Serial.println(line);
+  HTTPClient http;
+  Serial.print("[HTTP] begin...\n");
+  if (http.begin(client, host)) {
+      Serial.print("[HTTP] GET...\n");
+      http.setTimeout(5000);
+      int httpCode = http.GET();
+      Serial.println(httpCode);
+      String payload = http.getString();
+      Serial.println(payload);
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
       }
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
     }
-    client.stop();
-    Serial.println("\n[Disconnected]");
-  }
+    delay(10);
 }
 
 void dump_byte_array(byte *buffer, byte bufferSize)
