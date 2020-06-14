@@ -6,6 +6,7 @@
 #include <String.h>
 #include "wifi.h"
 
+#define AUTHORIZED_PIN  14    //Pin 9 para el reset del RC522
 ESP8266WiFiMulti WiFiMulti;
 
 void setup()
@@ -17,6 +18,8 @@ void setup()
     Serial.flush();
     delay(1000);
   }
+  pinMode(AUTHORIZED_PIN, OUTPUT);
+  digitalWrite(AUTHORIZED_PIN, HIGH);
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(ssid, password);
 }
@@ -54,6 +57,12 @@ void loop()
           {
             String payload = http.getString();
             Serial.println(payload);
+            if(payload.indexOf(" : 1}") != -1){
+            Serial.println("AUTH");
+              digitalWrite(AUTHORIZED_PIN, LOW);
+              delay(800);
+              digitalWrite(AUTHORIZED_PIN, HIGH);
+            }
           }
         }
         else
